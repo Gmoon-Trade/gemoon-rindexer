@@ -252,8 +252,8 @@ pub fn handle_new_command(
             )],
             abi: StringOrArray::Single(abi_example_path.display().to_string()),
             include_events: Some(vec![
-                ContractEvent { name: "Transfer".to_string(), timestamps: None },
-                ContractEvent { name: "Approval".to_string(), timestamps: None },
+                ContractEvent { name: "Transfer".to_string(), timestamps: None, tx_from: None },
+                ContractEvent { name: "Approval".to_string(), timestamps: None, tx_from: None },
             ]),
             index_event_in_order: None,
             dependency_events: None,

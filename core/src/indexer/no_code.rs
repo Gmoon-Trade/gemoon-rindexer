@@ -1,9 +1,10 @@
 use alloy::{
     dyn_abi::DynSolValue,
     json_abi::{Event, JsonAbi},
+    primitives::{Address, TxHash},
 };
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::{
     io,
     path::{Path, PathBuf},
@@ -21,7 +22,7 @@ use super::tables::{
 use crate::database::clickhouse::client::ClickhouseClient;
 use crate::database::clickhouse::setup::{setup_clickhouse, SetupClickhouseError};
 use crate::database::generate::{
-    generate_event_table_full_name, generate_indexer_contract_schema_name,
+    generate_event_table_full_name, generate_indexer_contract_schema_name, TX_FROM_COLUMN,
 };
 use crate::database::postgres::client::{pg_error_to_string, BulkCursorUpdate, CursorAdvance};
 use crate::database::postgres::generate::generate_internal_event_table_name;
@@ -377,6 +378,26 @@ struct NoCodeCallbackParams {
     /// batch's monotonic cursor commit can leapfrog an uncommitted earlier
     /// batch and a crash then permanently skips it.
     atomic_safe_concurrency: bool,
+    /// Store the transaction sender in the `tx_from` column (`tx_from: true` on the event);
+    /// `sql_column_names` then ends with that column.
+    tx_from: bool,
+}
+
+/// Sender (`tx.from`) of each transaction, read from its receipt. Fails unless every hash
+/// resolves, so a stored row never gets a missing sender.
+async fn fetch_tx_senders(
+    provider: &dyn ChainProvider,
+    hashes: &[TxHash],
+) -> Result<HashMap<TxHash, Address>, String> {
+    let receipts = provider.get_tx_receipts_batch(hashes).await.map_err(|e| e.to_string())?;
+    let senders: HashMap<TxHash, Address> =
+        receipts.iter().map(|receipt| (receipt.transaction_hash, receipt.from)).collect();
+
+    if let Some(missing) = hashes.iter().find(|hash| !senders.contains_key(*hash)) {
+        return Err(format!("No receipt returned for transaction {missing:#x}"));
+    }
+
+    Ok(senders)
 }
 
 struct EventCallbacks {
@@ -456,6 +477,29 @@ fn no_code_callback(params: Arc<NoCodeCallbackParams>) -> EventCallbacks {
             // table operations data: (log_params, network, tx_metadata)
             let mut table_events_data: Vec<(Vec<LogParam>, String, TxMetadata)> = Vec::new();
 
+            // `tx.from` of every transaction in the batch (`tx_from: true` on the event).
+            let tx_senders: HashMap<TxHash, Address> = match &results {
+                CallbackResult::Event(events) if params.tx_from => {
+                    let Some(provider) = params.providers.get(&network) else {
+                        return Err(format!("No provider for network {network}"));
+                    };
+                    let hashes: Vec<TxHash> = events
+                        .iter()
+                        .map(|result| result.tx_information.transaction_hash)
+                        .collect::<HashSet<_>>()
+                        .into_iter()
+                        .collect();
+                    fetch_tx_senders(provider.as_ref(), &hashes).await.map_err(|e| {
+                        error!(
+                            "{}::{} - Error fetching transaction senders: {}",
+                            params.contract_name, params.event_info.name, e
+                        );
+                        e
+                    })?
+                }
+                _ => HashMap::new(),
+            };
+
             let owned_results = match &results {
                 CallbackResult::Event(events) => events
                     .iter()
@@ -482,7 +526,7 @@ fn no_code_callback(params: Arc<NoCodeCallbackParams>) -> EventCallbacks {
                             );
 
                         let contract_address = EthereumSqlTypeWrapper::Address(address);
-                        let end_global_parameters = vec![
+                        let mut end_global_parameters = vec![
                             EthereumSqlTypeWrapper::B256(transaction_hash),
                             EthereumSqlTypeWrapper::U64(block_number),
                             EthereumSqlTypeWrapper::DateTimeNullable(block_timestamp),
@@ -491,6 +535,10 @@ fn no_code_callback(params: Arc<NoCodeCallbackParams>) -> EventCallbacks {
                             EthereumSqlTypeWrapper::U64(transaction_index),
                             EthereumSqlTypeWrapper::U256(log_index),
                         ];
+                        // Present for every transaction when `tx_from` is enabled.
+                        if let Some(sender) = tx_senders.get(&transaction_hash) {
+                            end_global_parameters.push(EthereumSqlTypeWrapper::Address(*sender));
+                        }
 
                         Some((
                             log.params,
@@ -1247,7 +1295,12 @@ async fn process_contract(
             csv = Some(Arc::new(csv_appender));
         }
 
-        let sql_column_names = generate_column_names_only_with_base_properties(&event_info.inputs);
+        let tx_from = contract.stores_tx_from(&event_name);
+        let mut sql_column_names =
+            generate_column_names_only_with_base_properties(&event_info.inputs);
+        if tx_from {
+            sql_column_names.push(TX_FROM_COLUMN.to_string());
+        }
         let sql_event_table_name =
             generate_event_table_full_name(&manifest.name, &contract.name, &event_info.name);
 
@@ -1318,6 +1371,7 @@ async fn process_contract(
                 multicall_addresses: multicall_addresses.clone(),
                 is_factory_event,
                 atomic_safe_concurrency,
+                tx_from,
             }))
             .event_callback,
             tables: tables_arc,
@@ -1472,6 +1526,7 @@ pub async fn process_trace_events(
             // ignores the callback result), so the atomic path buys nothing and
             // must not engage.
             atomic_safe_concurrency: false,
+            tx_from: false,
         });
 
         let event = TraceCallbackRegistryInformation {
@@ -1555,5 +1610,53 @@ storage:
             .find(|c| c.name == "total_sent")
             .expect("total_sent column present");
         assert_eq!(total_sent.resolved_type(), &ColumnType::Uint256);
+    }
+
+    fn receipt(hash: TxHash, from: Address) -> alloy::network::AnyTransactionReceipt {
+        serde_json::from_value(serde_json::json!({
+            "type": "0x2",
+            "status": "0x1",
+            "cumulativeGasUsed": "0x5208",
+            "logs": [],
+            "logsBloom": format!("0x{}", "0".repeat(512)),
+            "transactionHash": hash,
+            "transactionIndex": "0x0",
+            "blockHash": TxHash::with_last_byte(0xbb),
+            "blockNumber": "0x1",
+            "gasUsed": "0x5208",
+            "effectiveGasPrice": "0x1",
+            "from": from,
+            "to": Address::with_last_byte(0xcc),
+            "contractAddress": null
+        }))
+        .expect("valid receipt json")
+    }
+
+    #[tokio::test]
+    async fn fetch_tx_senders_maps_hash_to_sender() {
+        use crate::provider::mock::MockChainProvider;
+
+        let (hash_a, from_a) = (TxHash::with_last_byte(1), Address::with_last_byte(0xa1));
+        let (hash_b, from_b) = (TxHash::with_last_byte(2), Address::with_last_byte(0xb2));
+        let provider = MockChainProvider::new(1)
+            .with_receipts(vec![receipt(hash_a, from_a), receipt(hash_b, from_b)]);
+
+        let senders = fetch_tx_senders(&provider, &[hash_a, hash_b]).await.unwrap();
+
+        assert_eq!(senders, HashMap::from([(hash_a, from_a), (hash_b, from_b)]));
+    }
+
+    #[tokio::test]
+    async fn fetch_tx_senders_fails_on_missing_receipt() {
+        use crate::provider::mock::MockChainProvider;
+
+        let hash = TxHash::with_last_byte(1);
+        let provider = MockChainProvider::new(1)
+            .with_receipts(vec![receipt(hash, Address::with_last_byte(0xa1))]);
+
+        let err =
+            fetch_tx_senders(&provider, &[hash, TxHash::with_last_byte(9)]).await.unwrap_err();
+
+        assert!(err.contains("No receipt returned for transaction"), "{err}");
     }
 }

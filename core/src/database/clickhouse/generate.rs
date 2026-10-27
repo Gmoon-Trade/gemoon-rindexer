@@ -11,6 +11,7 @@ use crate::{
 use crate::database::generate::{
     generate_indexer_contract_schema_name, generate_internal_factory_event_table_name,
     generate_internal_factory_event_table_name_no_shorten, GenerateTablesForIndexerSqlError,
+    TX_FROM_COLUMN,
 };
 use crate::database::postgres::generate::{
     generate_internal_event_table_name_no_shorten, GenerateInternalFactoryEventTableNameParams,
@@ -74,6 +75,14 @@ pub fn generate_tables_for_indexer_clickhouse(
 
             if !raw_events.is_empty() {
                 sql.push_str(&generate_event_table_clickhouse(&raw_events, &schema_name));
+
+                for event_info in raw_events.iter().filter(|e| contract.stores_tx_from(&e.name)) {
+                    sql.push_str(&format!(
+                        "ALTER TABLE {}.{} ADD COLUMN IF NOT EXISTS {TX_FROM_COLUMN} Nullable(FixedString(42));",
+                        schema_name,
+                        camel_to_snake(&event_info.name)
+                    ));
+                }
             }
 
             // Generate custom tables if defined

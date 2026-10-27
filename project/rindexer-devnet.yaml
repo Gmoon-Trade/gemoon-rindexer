@@ -15,7 +15,10 @@ contracts:
   - name: GemoonUniswapHook
     abi: ./abis/IHookManager.json
     include_events:
-      - MemeSwapped
+      # tx_from: отправитель транзакции. Сторонние роутеры (gmgn) не кладут адрес в hookData,
+      # и MemeSwapped.trader у них нулевой (см. project/sql/meme_swapped.sql)
+      - name: MemeSwapped
+        tx_from: true
       - FeeCharged
       - FeesDistributed
     details:

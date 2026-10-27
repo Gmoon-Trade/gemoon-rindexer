@@ -540,6 +540,33 @@ contracts: // [!code focus]
       - Approval // [!code focus]
 ```
 
+### tx_from
+
+Event logs do not carry the sender of the transaction that emitted them. Set `tx_from: true` on an
+event to store it (`tx.from`) in an extra `tx_from` column of that event's raw table (`txFrom` in GraphQL).
+Useful when the event itself does not say who acted, e.g. a swap made through a third-party router.
+
+:::info
+This is optional and defaults to `false`. rindexer reads the sender from the transaction receipt, so it costs
+one `eth_getTransactionReceipt` per transaction with this event (batched). Supported in `no-code` projects with
+PostgreSQL and ClickHouse storage; CSV output does not include it. Enabling it on an existing table adds the
+column on startup, but rows indexed before stay `NULL` until you re-index.
+:::
+
+```yaml [rindexer.yaml]
+contracts:
+  - name: RocketPoolETH
+    details:
+      - network: ethereum
+        address: "0xae78736cd615f374d3085123a210448e74fc6393"
+        start_block: 18600000
+    abi: ./abis/RocketTokenRETH.abi.json
+    include_events:
+      - name: Transfer // [!code focus]
+        tx_from: true // [!code focus]
+      - Approval
+```
+
 ## index_event_in_order
 
 rindexer was built to be as fast as it can so any blocking processes holds indexing up, the more concurrency the better.

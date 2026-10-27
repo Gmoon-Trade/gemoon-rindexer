@@ -601,7 +601,7 @@ fn contract_to_manifest(
             desired
                 .event_names
                 .iter()
-                .map(|name| ContractEvent { name: name.clone(), timestamps: None })
+                .map(|name| ContractEvent { name: name.clone(), timestamps: None, tx_from: None })
                 .collect(),
         ),
         index_event_in_order: extensions.index_event_in_order,
@@ -2744,6 +2744,7 @@ mod tests {
                 include_events: Some(vec![ContractEvent {
                     name: "Ping".to_string(),
                     timestamps: None,
+                    tx_from: None,
                 }]),
                 index_event_in_order: Some(vec!["Ping".to_string()]),
                 dependency_events: None,
@@ -2764,6 +2765,7 @@ mod tests {
                 include_events: Some(vec![ContractEvent {
                     name: "UserEvent".to_string(),
                     timestamps: None,
+                    tx_from: None,
                 }]),
                 index_event_in_order: None,
                 dependency_events: None,

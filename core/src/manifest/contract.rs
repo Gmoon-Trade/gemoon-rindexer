@@ -228,7 +228,9 @@ where
     Ok(Some(
         defs.into_iter()
             .map(|def| match def {
-                ContractEventDeserializer::String(s) => ContractEvent { name: s, timestamps: None },
+                ContractEventDeserializer::String(s) => {
+                    ContractEvent { name: s, timestamps: None, tx_from: None }
+                }
                 ContractEventDeserializer::Struct(ev) => ev,
             })
             .collect(),
@@ -243,6 +245,10 @@ pub struct ContractEvent {
     /// setting with either the true or false state if set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timestamps: Option<bool>,
+    /// Store the sender of the transaction that emitted the event (`tx.from`) in a `tx_from`
+    /// column of the event table. Costs one `eth_getTransactionReceipt` per transaction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tx_from: Option<bool>,
 }
 
 // ============================================================================
@@ -1498,6 +1504,14 @@ impl Contract {
                 tables.iter().any(|t| t.events.iter().any(|e| e.event == event_name))
             })
     }
+
+    /// Whether the raw event table of `event_name` has a `tx_from` column holding the
+    /// transaction sender (`tx_from: true` on the event in `include_events`).
+    pub fn stores_tx_from(&self, event_name: &str) -> bool {
+        self.include_events.as_ref().is_some_and(|events| {
+            events.iter().any(|e| e.name == event_name && e.tx_from == Some(true))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -1603,8 +1617,8 @@ mod tests {
         assert_eq!(
             contract.include_events,
             Some(vec![
-                ContractEvent { name: "Transfer".to_string(), timestamps: None },
-                ContractEvent { name: "Approval".to_string(), timestamps: None }
+                ContractEvent { name: "Transfer".to_string(), timestamps: None, tx_from: None },
+                ContractEvent { name: "Approval".to_string(), timestamps: None, tx_from: None }
             ])
         );
     }
@@ -1632,10 +1646,44 @@ mod tests {
         assert_eq!(
             contract.include_events,
             Some(vec![
-                ContractEvent { name: "Transfer".to_string(), timestamps: Some(true) },
-                ContractEvent { name: "Approval".to_string(), timestamps: Some(false) }
+                ContractEvent {
+                    name: "Transfer".to_string(),
+                    timestamps: Some(true),
+                    tx_from: None
+                },
+                ContractEvent {
+                    name: "Approval".to_string(),
+                    timestamps: Some(false),
+                    tx_from: None
+                }
             ])
         );
+    }
+
+    #[test]
+    fn test_contract_include_events_tx_from() {
+        let yaml = r#"
+            name: Hook
+            abi: ./abis/Hook.abi.json
+            details:
+              - network: ethereum
+                address: "0x1F98431c8aD98523631AE4a59f267346ea31F984"
+                start_block: 1
+            include_events:
+              - name: Swapped
+                tx_from: true
+              - Fee
+        "#;
+
+        let contract: Contract = serde_yaml::from_str(yaml).unwrap();
+
+        assert!(contract.stores_tx_from("Swapped"));
+        assert!(!contract.stores_tx_from("Fee"));
+        assert!(!contract.stores_tx_from("Unknown"));
+
+        // An unset `tx_from` is not written back on manifest round-trips.
+        let serialized = serde_yaml::to_string(&contract).unwrap();
+        assert_eq!(serialized.matches("tx_from").count(), 1);
     }
 
     #[test]

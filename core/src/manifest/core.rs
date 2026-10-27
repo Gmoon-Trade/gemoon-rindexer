@@ -190,7 +190,7 @@ impl Manifest {
                         }).collect::<Vec<_>>(),
                         abi: first_factory.abi.clone().into(),
                         dependency_events: None,
-                        include_events: Some(vec![ContractEvent { name: first_factory.event_name.clone(), timestamps: None }]),
+                        include_events: Some(vec![ContractEvent { name: first_factory.event_name.clone(), timestamps: None, tx_from: None }]),
                         index_event_in_order: contract.index_event_in_order.clone(),
                         reorg_safe_distance: contract.reorg_safe_distance,
                         generate_csv: contract.generate_csv,

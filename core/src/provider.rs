@@ -1003,6 +1003,11 @@ pub mod mock {
             self
         }
 
+        pub fn with_receipts(mut self, receipts: Vec<AnyTransactionReceipt>) -> Self {
+            self.receipts = receipts;
+            self
+        }
+
         pub fn with_max_block_range(mut self, range: u64) -> Self {
             self.max_block_range = Some(U64::from(range));
             self

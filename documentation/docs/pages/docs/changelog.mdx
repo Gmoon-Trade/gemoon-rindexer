@@ -10,6 +10,7 @@
 
 ### Features
 -------------------------------------------------
+- feat: **`tx_from` on `include_events`** — `- name: <Event>` + `tx_from: true` stores the sender of the emitting transaction (`tx.from`) in a new nullable `tx_from` column of the event's raw table (`txFrom` in GraphQL), read via batched `eth_getTransactionReceipt` (one call per transaction). Defaults to `false`; no-code mode, PostgreSQL and ClickHouse (not CSV). Enabling it on an existing table adds the column on startup; rows indexed earlier stay `NULL` until re-indexed
 
 ## Releases
 -------------------------------------------------

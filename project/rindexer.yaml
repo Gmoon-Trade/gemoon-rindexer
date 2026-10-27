@@ -15,21 +15,24 @@ contracts:
   - name: GemoonUniswapHook
     abi: ./abis/IHookManager.json
     include_events:
-      - MemeSwapped
+      # tx_from: отправитель транзакции. Сторонние роутеры (gmgn) не кладут адрес в hookData,
+      # и MemeSwapped.trader у них нулевой (см. project/sql/meme_swapped.sql)
+      - name: MemeSwapped
+        tx_from: true
       - FeeCharged
       - FeesDistributed
     details:
       - network: robinhood
-        start_block: 95972286
-        address: 0xF5353eaEdECa56177aa8E64c8d3B05969D8870cC
+        start_block: 98639991
+        address: 0xa8226f39a3773d431d3f8512c19b2CC2E98E70cc
   - name: UniswapV3SwapAdapter
     abi: ./abis/IUniswapV3SwapAdapter.json
     include_events:
       - Swapped
     details:
       - network: robinhood
-        start_block: 95972328
-        address: 0xD853a73ef8CF29b1705b3BE799975038A6E27546
+        start_block: 98640040
+        address: 0x5B571976bC31d5F9Fd578e085b8d96a5469607db
   - name: GemoonVault
     abi: ./abis/IVault.json
     include_events:
@@ -44,15 +47,15 @@ contracts:
       - CreatorTransferred
     details:
       - network: robinhood
-        start_block: 95972231
-        address: 0x65B21048092Fa530da713459730081389A9113CD
+        start_block: 98639949
+        address: 0xFC50279a58aE76106a73b15B07f901b7e82Fb7eB
   - name: UniswapPoolManager
     abi: ./abis/IPoolManager.json
     include_events:
       - Swap
     details:
       - network: robinhood
-        start_block: 95972231
+        start_block: 98639949
         address: 0x8366a39CC670B4001A1121B8F6A443A643e40951
   - name: GemoonController
     abi: ./abis/IGemoonController.json
@@ -62,8 +65,8 @@ contracts:
       - PositionCreated
     details:
       - network: robinhood
-        start_block: 95972254
-        address: 0xC6B2F056193bc7b0Ab73B2E87B6E82F1010A3AEF
+        start_block: 98639975
+        address: 0xC69D38374f8b4CbF1126514Ab0264f84c395E111
   - name: GemoonToken
     abi: ./abis/IGemoonToken.json
     include_events:
@@ -74,10 +77,10 @@ contracts:
       - UpdateTokenURI
     details:
       - network: robinhood
-        start_block: 95972254
+        start_block: 98639975
         factory:
           name: GemoonController
-          address: 0xC6B2F056193bc7b0Ab73B2E87B6E82F1010A3AEF
+          address: 0xC69D38374f8b4CbF1126514Ab0264f84c395E111
           abi: ./abis/IGemoonController.json
           event_name: TokenCreated
           input_name: "tokenAddress"
@@ -95,8 +98,8 @@ contracts:
       - RefShareUpdated
     details:
       - network: robinhood
-        start_block: 95972264
-        address: 0xeC435AB471AB14A3b1010493820f094CC70cdC17
+        start_block: 98639985
+        address: 0xE78543739F00F9D4aD70F4A3a078BA06b05A76a5
   # Цены токенизированных активов Robinhood в USDG по свопам в их Uniswap V3 пулах.
   # Изменение за 24ч / 7д / 30д считают SQL-функции из ./sql/asset_prices.sql.
   - name: AssetPrices

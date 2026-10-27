@@ -15,6 +15,21 @@ use alloy::primitives::keccak256;
 use std::path::Path;
 use tracing::{error, info};
 
+/// Column of a raw event table holding the transaction sender (`tx_from: true` on the event in
+/// `include_events`).
+pub const TX_FROM_COLUMN: &str = "tx_from";
+
+/// Adds the nullable `tx_from` column to an event table. `ADD COLUMN IF NOT EXISTS` covers both
+/// freshly created tables and tables created before `tx_from` was enabled (their existing rows
+/// stay NULL until re-indexed).
+fn generate_tx_from_column_sql(schema_name: &str, event_name: &str) -> String {
+    format!(
+        "ALTER TABLE {}.{} ADD COLUMN IF NOT EXISTS {TX_FROM_COLUMN} CHAR(42);",
+        schema_name,
+        camel_to_snake(event_name)
+    )
+}
+
 fn generate_event_table_sql_with_comments(
     abi_inputs: &[EventInfo],
     contract_name: &str,
@@ -392,6 +407,10 @@ pub fn generate_tables_for_indexer_sql(
                     &schema_name,
                     event_matching_name_on_other,
                 ));
+
+                for event_info in raw_events.iter().filter(|e| contract.stores_tx_from(&e.name)) {
+                    sql.push_str(&generate_tx_from_column_sql(&schema_name, &event_info.name));
+                }
             }
 
             // Generate custom tables if defined
@@ -684,6 +703,50 @@ tables:
             !sql.contains("ddltest_usdc.approval"),
             "events neither included nor used by tables must not get raw tables: {sql}"
         );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn tx_from_column_added_only_for_opted_in_events() {
+        let dir =
+            std::env::temp_dir().join(format!("rindexer-tx-from-test-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("abis")).unwrap();
+        std::fs::write(
+            dir.join("abis/ERC20.abi.json"),
+            r#"[{"anonymous":false,"inputs":[{"indexed":true,"name":"from","type":"address"},{"indexed":true,"name":"to","type":"address"},{"indexed":false,"name":"value","type":"uint256"}],"name":"Transfer","type":"event"},
+                {"anonymous":false,"inputs":[{"indexed":true,"name":"owner","type":"address"},{"indexed":true,"name":"spender","type":"address"},{"indexed":false,"name":"value","type":"uint256"}],"name":"Approval","type":"event"}]"#,
+        )
+        .unwrap();
+
+        let contract: Contract = serde_yaml::from_str(
+            r#"
+name: USDC
+details:
+  - network: ethereum
+    address: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+    start_block: "1"
+abi: ./abis/ERC20.abi.json
+include_events:
+  - name: Transfer
+    tx_from: true
+  - Approval
+"#,
+        )
+        .unwrap();
+
+        let indexer = Indexer {
+            name: "txfromtest".to_string(),
+            contracts: vec![contract],
+            native_transfers: NativeTransfers::default(),
+        };
+
+        let sql = generate_tables_for_indexer_sql(&dir, &indexer, false).unwrap().to_string();
+
+        assert!(sql.contains(
+            "ALTER TABLE txfromtest_usdc.transfer ADD COLUMN IF NOT EXISTS tx_from CHAR(42);"
+        ));
+        assert!(!sql.contains("txfromtest_usdc.approval ADD COLUMN"));
 
         std::fs::remove_dir_all(&dir).ok();
     }
