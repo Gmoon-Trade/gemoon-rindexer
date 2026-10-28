@@ -23,16 +23,16 @@ contracts:
       - FeesDistributed
     details:
       - network: robinhood
-        start_block: 98639991
-        address: 0xa8226f39a3773d431d3f8512c19b2CC2E98E70cc
+        start_block: 99274417
+        address: 0xFB524a4bd217ca174946056F5D47Db5A536070CC
   - name: UniswapV3SwapAdapter
     abi: ./abis/IUniswapV3SwapAdapter.json
     include_events:
       - Swapped
     details:
       - network: robinhood
-        start_block: 98640040
-        address: 0x5B571976bC31d5F9Fd578e085b8d96a5469607db
+        start_block: 99274482
+        address: 0x844463523A39C7d0Bcb8944CE9CCBB10263f7C8e
   - name: GemoonVault
     abi: ./abis/IVault.json
     include_events:
@@ -47,15 +47,15 @@ contracts:
       - CreatorTransferred
     details:
       - network: robinhood
-        start_block: 98639949
-        address: 0xFC50279a58aE76106a73b15B07f901b7e82Fb7eB
+        start_block: 99274359
+        address: 0xb41E6Ef21ee0f46253E3ea62Af145CaB50c1906a
   - name: UniswapPoolManager
     abi: ./abis/IPoolManager.json
     include_events:
       - Swap
     details:
       - network: robinhood
-        start_block: 98639949
+        start_block: 99274359
         address: 0x8366a39CC670B4001A1121B8F6A443A643e40951
   - name: GemoonController
     abi: ./abis/IGemoonController.json
@@ -65,8 +65,8 @@ contracts:
       - PositionCreated
     details:
       - network: robinhood
-        start_block: 98639975
-        address: 0xC69D38374f8b4CbF1126514Ab0264f84c395E111
+        start_block: 99274399
+        address: 0x7bCc602C7a93373A32Cdf9C08eC32a29F95B2e5B
   - name: GemoonToken
     abi: ./abis/IGemoonToken.json
     include_events:
@@ -77,10 +77,10 @@ contracts:
       - UpdateTokenURI
     details:
       - network: robinhood
-        start_block: 98639975
+        start_block: 99274399
         factory:
           name: GemoonController
-          address: 0xC69D38374f8b4CbF1126514Ab0264f84c395E111
+          address: 0x7bCc602C7a93373A32Cdf9C08eC32a29F95B2e5B
           abi: ./abis/IGemoonController.json
           event_name: TokenCreated
           input_name: "tokenAddress"
@@ -98,8 +98,8 @@ contracts:
       - RefShareUpdated
     details:
       - network: robinhood
-        start_block: 98639985
-        address: 0xE78543739F00F9D4aD70F4A3a078BA06b05A76a5
+        start_block: 99274410
+        address: 0xfcB33D788F513691f4b1554C95d1e5b1BDB56131
   # Цены токенизированных активов Robinhood в USDG по свопам в их Uniswap V3 пулах.
   # Изменение за 24ч / 7д / 30д считают SQL-функции из ./sql/asset_prices.sql.
   - name: AssetPrices
